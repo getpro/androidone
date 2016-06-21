@@ -13,6 +13,7 @@ import com.sd.core.utils.NLog;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 
 
 /**
@@ -94,7 +95,7 @@ public class AsyncTaskManager {
 	 * 异步线程
 	 * @param bean
 	 */
-	@Subscribe
+	@Subscribe(threadMode = ThreadMode.ASYNC)
 	public void onEventAsync(AsyncRequest bean) {
 		AsyncResult result = new AsyncResult(bean.getRequestCode(), bean.isCheckNetwork(), bean.getListener());
 		try {
@@ -122,7 +123,7 @@ public class AsyncTaskManager {
 	 * 在数据返回到UI线程中处理
 	 * @param bean
 	 */
-	@Subscribe
+	@Subscribe(threadMode = ThreadMode.MAIN)
 	public void onEventMainThread(AsyncResult bean){
 		switch(bean.getState()){
 			case REQUEST_SUCCESS_CODE:
