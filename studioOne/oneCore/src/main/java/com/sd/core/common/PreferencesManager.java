@@ -12,9 +12,11 @@ import java.lang.reflect.Method;
 import java.util.Set;
 
 import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
+import android.os.Build;
 import android.text.TextUtils;
 
 import com.sd.core.utils.NLog;
@@ -136,6 +138,7 @@ public class PreferencesManager {
 		}
 	}
 
+	@TargetApi(Build.VERSION_CODES.HONEYCOMB)
 	public void put(String key, Set<String> value) {
 		Editor edit = preferences.edit();
 		if (edit != null) {
@@ -165,28 +168,49 @@ public class PreferencesManager {
 				
 				for (Method method : methods) {
 					methodName = method.getName();
+					if(methodName.indexOf("set")>=0) continue;
 					for (Field f : fields) {
 						fieldName = f.getName();
 						if (methodName.toLowerCase().contains(fieldName.toLowerCase())) {
-
 							Object value = method.invoke(t);
 							if (value != null && !TextUtils.isEmpty(String.valueOf(value))) {
 								saveValue = String.valueOf(value);
+							}else{
+								saveValue="";
 							}
-
-							NLog.e(tag, "key: " + fieldName + " value: " + saveValue);
-							edit.putString(fieldName, String.valueOf(saveValue));
+							String typeName = f.getType().getName();
+							switch (typeName){
+								case "java.lang.String":
+									String svalue = String.valueOf(saveValue);
+									edit.putString(fieldName,svalue);
+									break;
+								case "java.lang.Integer":
+								case "int":
+									int ivalue = TextUtils.isEmpty(saveValue)?0:Integer.valueOf(saveValue);
+									edit.putInt(fieldName, ivalue);
+									break;
+								case "java.lang.Float":
+								case "float":
+									float fvalue = TextUtils.isEmpty(saveValue)?0f:Float.valueOf(saveValue);
+									edit.putFloat(fieldName,fvalue );
+									break;
+								case "java.lang.Boolean":
+								case "boolean":
+									boolean bvalue = TextUtils.isEmpty(saveValue)?false:Boolean.valueOf(saveValue);
+									edit.putBoolean(fieldName, bvalue);
+									break;
+								default:
+									svalue = String.valueOf(saveValue);
+									edit.putString(fieldName, svalue);
+									break;
+							}
 							break;
 						}
 					}
 				}
 				edit.commit();
 			}
-		} catch (IllegalAccessException e) {
-			e.printStackTrace();
-		} catch (IllegalArgumentException e) {
-			e.printStackTrace();
-		} catch (InvocationTargetException e) {
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
@@ -215,6 +239,7 @@ public class PreferencesManager {
 		return preferences.getLong(key, defValue);
 	}
 
+	@TargetApi(Build.VERSION_CODES.HONEYCOMB)
 	public Set<String> get(String key, Set<String> defValue) {
 		return preferences.getStringSet(key, defValue);
 	}
@@ -235,14 +260,31 @@ public class PreferencesManager {
 				fieldName = f.getName();
 				if (!"serialVersionUID".equals(fieldName)) {
 					f.setAccessible(true);
-					f.set(obj, get(f.getName()));
+					try {
+						String typeName = f.getType().getName();
+						switch (typeName){
+							case "java.lang.String":
+								f.set(obj, get(f.getName()));
+								break;
+							case "java.lang.Integer":
+							case "int":
+								f.set(obj,get(f.getName(),0));
+								break;
+							case "java.lang.Float":
+							case "float":
+								f.set(obj,get(f.getName(),0f));
+								break;
+							case "java.lang.Boolean":
+							case "boolean":
+								f.set(obj,get(f.getName(),false));
+								break;
+						}
+					}catch (Exception e){
+						NLog.e(tag,e);
+					}
 				}
 			}
-		} catch (InstantiationException e) {
-			e.printStackTrace();
-		} catch (IllegalAccessException e) {
-			e.printStackTrace();
-		} catch (IllegalArgumentException e) {
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		return obj;
