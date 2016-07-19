@@ -5,6 +5,18 @@
 
 package com.sd.core.common;
 
+import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
+import android.content.Context;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.NameNotFoundException;
+import android.os.Build;
+import android.os.Environment;
+import android.os.Looper;
+import android.text.TextUtils;
+import android.util.Log;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FilenameFilter;
@@ -16,18 +28,6 @@ import java.lang.reflect.Field;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
-import android.annotation.SuppressLint;
-import android.content.Context;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
-import android.content.pm.PackageManager.NameNotFoundException;
-import android.os.Build;
-import android.os.Environment;
-import android.os.Looper;
-import android.text.TextUtils;
-
-import com.sd.core.utils.NLog;
- 
 /**
  * [系统未捕获异常默认处理类，将完成当系统出现异常（未处理）时，弹出友好提示框，收集错误日记，发送错误日志于服务器]
  * 
@@ -47,10 +47,11 @@ public class AppCrashHandler implements UncaughtExceptionHandler {
 	private StringBuilder crashReport = new StringBuilder();
 	
 	private final String VERSIONNAME = "versionName"; 
-	private final String VERSIONCODE = "versionCode"; 
+	private final String VERSIONCODE = "versionCode";
+	private final String DIR="Log";
 	
 	private final String PREFIX = "crash_";
-	private final String PATTERN = "yyyy-MM-dd hh:mm:ss";
+	private final String PATTERN = "yyyyMMddhhmmss";
 	private final String SUFFIX = ".txt";
 	private String path;
 	
@@ -72,11 +73,7 @@ public class AppCrashHandler implements UncaughtExceptionHandler {
 	 */
 	private AppCrashHandler(Context context) {
 		mContext = context;
-		if(checkSDCard()){
-			path = Environment.getExternalStorageDirectory().getPath() + File.separator + mContext.getPackageName();
-		}else{
-			path = mContext.getFilesDir().getParent();
-		}
+		path = getDiskCacheDir(context,DIR).getPath();
 	    mDefaultHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(this);
 	}
@@ -191,16 +188,14 @@ public class AppCrashHandler implements UncaughtExceptionHandler {
 			crashReport.append("\n\t");
 			crashReport.append(ex.getMessage()).append("\n\t");
 			crashReport.append(result).append("\n\t");
-			
+			Log.e(tag,result);
 			String fileName = getCrashFileName();
 			File file = new File(path);  
 			if(!file.exists()){
 				file.mkdirs();
 			}
 			file = new File(path, fileName); 
-			NLog.e(tag, file.getPath());
-			
-			FileOutputStream fos = new FileOutputStream(file);  
+			FileOutputStream fos = new FileOutputStream(file);
 			fos.write(crashReport.toString().getBytes());
 			fos.flush();
 			fos.close();
@@ -216,7 +211,7 @@ public class AppCrashHandler implements UncaughtExceptionHandler {
 	 */
 	public boolean checkSDCard(){
 		String flag = Environment.getExternalStorageState();
-		if(android.os.Environment.MEDIA_MOUNTED.equals(flag)){
+		if(Environment.MEDIA_MOUNTED.equals(flag)){
 			return true;
 		}
 		return false;
@@ -242,7 +237,7 @@ public class AppCrashHandler implements UncaughtExceptionHandler {
 	 * 发送错误日志报告，并删除本地文件
 	 */
 	public void sendCrashReport(){
-		File filesDir = mContext.getFilesDir();
+		File filesDir = getDiskCacheDir(mContext,DIR);
 		FilenameFilter filter = new FilenameFilter() {
 			@Override
 			public boolean accept(File dir, String filename) {
@@ -269,5 +264,109 @@ public class AppCrashHandler implements UncaughtExceptionHandler {
 
 	public void setOnCrashListener(APPOnCrashListener onCrashListener) {
 		this.onCrashListener = onCrashListener;
+	}
+
+	/**
+	 * Get a usable cache directory (external if available, internal otherwise).
+	 *
+	 * @param context The context to use
+	 * @param uniqueName A unique directory name to append to the cache dir
+	 * @return The cache dir
+	 */
+	public static File getDiskCacheDir(Context context, String uniqueName) {
+		// Check if media is mounted or storage is built-in, if so, try and use external cache dir
+		// otherwise use internal cache dir
+		try {
+			final String cachePath =
+					Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState()) ||
+							!isExternalStorageRemovable() ? getExternalCacheDir(context).getPath() :
+							context.getCacheDir().getPath();
+			File file = new File(cachePath + File.separator + uniqueName);
+			if(!file.exists()){
+				file.mkdirs();
+			}
+			return file;
+		}catch (Exception e){
+			e.printStackTrace();
+		}
+
+		return null;
+	}
+
+	public static boolean hasFroyo() {
+		// Can use static final constants like FROYO, declared in later versions
+		// of the OS since they are inlined at compile time. This is guaranteed behavior.
+		return Build.VERSION.SDK_INT >= Build.VERSION_CODES.FROYO;
+	}
+
+	public static boolean hasGingerbread() {
+		return Build.VERSION.SDK_INT >= Build.VERSION_CODES.GINGERBREAD;
+	}
+
+	/**
+	 * Check if external storage is built-in or removable.
+	 *
+	 * @return True if external storage is removable (like an SD card), false
+	 *         otherwise.
+	 */
+	@TargetApi(Build.VERSION_CODES.GINGERBREAD)
+	public static boolean isExternalStorageRemovable() {
+		if (hasGingerbread()) {
+			return Environment.isExternalStorageRemovable();
+		}
+		return true;
+	}
+
+	/**
+	 * Get the external app cache directory.
+	 *
+	 * @param context The context to use
+	 * @return The external cache dir
+	 */
+	@TargetApi(Build.VERSION_CODES.FROYO)
+	public static File getExternalCacheDir(Context context) {
+		if (hasFroyo()) {
+			File file = context.getExternalCacheDir();
+			if(file!=null&&!file.exists()){
+				file.mkdirs();
+				return file;
+			}
+		}
+
+		// Before Froyo we need to construct the external cache dir ourselves
+		final String cacheDir = "/Android/data/" + context.getPackageName();
+		File file = new File(Environment.getExternalStorageDirectory().getPath() + cacheDir);
+		if(file.isFile()){
+			file.delete();
+			file.mkdirs();
+		}
+		File cahce = new File(Environment.getExternalStorageDirectory().getPath() + cacheDir+File.separator+"cache");
+		if(!cahce.exists()){
+			cahce.mkdirs();
+		}
+		return cahce;
+	}
+
+	/**
+	 * [系统未捕获异常处理监听类]
+	 *
+	 * @author huxinwu
+	 * @version 1.0
+	 * @date 2014-8-20
+	 *
+	 **/
+	public interface APPOnCrashListener {
+
+		/**
+		 * 当系统Crash的时候处理方法，一般弹出友好提示框
+		 * @param context
+		 */
+		public void onCrashDialog(Context context);
+
+		/**
+		 * 处理收集错误信息，一般发送于服务器
+		 * @param crashReport 收集错误信息
+		 */
+		public void onCrashPost(String crashReport, File file);
 	}
 }
