@@ -5,21 +5,15 @@
 
 package com.sd.core.common;
 
-import java.io.File;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.Set;
-
 import android.annotation.SuppressLint;
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
-import android.os.Build;
 import android.text.TextUtils;
 
-import com.sd.core.utils.NLog;
+import com.sd.core.common.parse.JsonMananger;
+
+import java.io.File;
 
 /**
  * [PreferencesManager管理类，提供get和put方法来重写SharedPreferences所提供的方法，更为实用和便捷]
@@ -138,14 +132,6 @@ public class PreferencesManager {
 		}
 	}
 
-	@TargetApi(Build.VERSION_CODES.HONEYCOMB)
-	public void put(String key, Set<String> value) {
-		Editor edit = preferences.edit();
-		if (edit != null) {
-			edit.putStringSet(key, value);
-			edit.commit();
-		}
-	}
 
 	/**
 	 * 直接存放对象，反射将根据对象的属性作为key，并将对应的值保存。
@@ -155,62 +141,11 @@ public class PreferencesManager {
 	@SuppressWarnings("rawtypes")
 	public <T> void put(T t) {
 		try {
-			String methodName = "";
-			String saveValue = "";
-			String fieldName = "";
 			Editor edit = preferences.edit();
-			Class cls = t.getClass();
-
-			if (edit != null) {
-				
-				Method[] methods = cls.getDeclaredMethods();
-				Field[] fields = cls.getDeclaredFields();
-				
-				for (Method method : methods) {
-					methodName = method.getName();
-					if(methodName.indexOf("set")>=0) continue;
-					for (Field f : fields) {
-						fieldName = f.getName();
-						if (methodName.toLowerCase().contains(fieldName.toLowerCase())) {
-							Object value = method.invoke(t);
-							if (value != null && !TextUtils.isEmpty(String.valueOf(value))) {
-								saveValue = String.valueOf(value);
-							}else{
-								saveValue="";
-							}
-							String typeName = f.getType().getName();
-							switch (typeName){
-								case "java.lang.String":
-									String svalue = String.valueOf(saveValue);
-									edit.putString(fieldName,svalue);
-									break;
-								case "java.lang.Integer":
-								case "int":
-									int ivalue = TextUtils.isEmpty(saveValue)?0:Integer.valueOf(saveValue);
-									edit.putInt(fieldName, ivalue);
-									break;
-								case "java.lang.Float":
-								case "float":
-									float fvalue = TextUtils.isEmpty(saveValue)?0f:Float.valueOf(saveValue);
-									edit.putFloat(fieldName,fvalue );
-									break;
-								case "java.lang.Boolean":
-								case "boolean":
-									boolean bvalue = TextUtils.isEmpty(saveValue)?false:Boolean.valueOf(saveValue);
-									edit.putBoolean(fieldName, bvalue);
-									break;
-								default:
-									svalue = String.valueOf(saveValue);
-									edit.putString(fieldName, svalue);
-									break;
-							}
-							break;
-						}
-					}
-				}
-				edit.commit();
-			}
-		} catch (Exception e) {
+			String json = JsonMananger.beanToJson(t);
+			edit.putString(t.getClass().getSimpleName(), json);
+			edit.commit();
+		}catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
@@ -239,50 +174,19 @@ public class PreferencesManager {
 		return preferences.getLong(key, defValue);
 	}
 
-	@TargetApi(Build.VERSION_CODES.HONEYCOMB)
-	public Set<String> get(String key, Set<String> defValue) {
-		return preferences.getStringSet(key, defValue);
-	}
 
 	/**
-	 * 获取整个对象，跟put(T t)对应使用， 利用反射得到对象的属性，然后从preferences获取
+	 * 获取整个对象，跟put(T t)对应使用
 	 * 
 	 * @param cls
 	 * @return
 	 */
 	public <T> Object get(Class<T> cls) {
 		Object obj = null;
-		String fieldName = "";
 		try {
-			obj = cls.newInstance();
-			Field[] fields = cls.getDeclaredFields();
-			for (Field f : fields) {
-				fieldName = f.getName();
-				if (!"serialVersionUID".equals(fieldName)) {
-					f.setAccessible(true);
-					try {
-						String typeName = f.getType().getName();
-						switch (typeName){
-							case "java.lang.String":
-								f.set(obj, get(f.getName()));
-								break;
-							case "java.lang.Integer":
-							case "int":
-								f.set(obj,get(f.getName(),0));
-								break;
-							case "java.lang.Float":
-							case "float":
-								f.set(obj,get(f.getName(),0f));
-								break;
-							case "java.lang.Boolean":
-							case "boolean":
-								f.set(obj,get(f.getName(),false));
-								break;
-						}
-					}catch (Exception e){
-						NLog.e(tag,e);
-					}
-				}
+			String json = preferences.getString(cls.getClass().getSimpleName(), "");
+			if(!TextUtils.isEmpty(json)){
+				obj = JsonMananger.jsonToBean(json, cls);
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
